@@ -1,0 +1,29 @@
+# 衍灵·灯塔 — 中央调度节点
+# 运行在 Mac Mini，与灯塔核心共存：宽边界，LLM 认知，深度进化
+node:
+  role: lighthouse
+  display_name: "衍灵·灯塔 — 中央调度"
+
+capabilities:
+  - perception.system
+  - perception.blackboard
+  - cognition.llm
+  - action.alert
+  - action.log
+  - action.adjust
+  - action.notify
+  - evolution.deep
+
+boundaries:
+  scope:
+    allowed_types: ["alert", "log", "adjust", "notify"]
+  rate_limit:
+    max_per_minute: 30
+    max_per_hour: 500
+  time_window:
+    start_hour: 0
+    end_hour: 24
+
+cognition:
+  mode: llm
+  deep_evolution: true

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if not info.evolution %}
+<div class="section">
+    <div class="empty">进化系统未启用 — 引擎未配置 EvolutionEngine</div>
+</div>
+{% else %}
+{% set evo = info.evolution %}
+
+<div class="metric-grid">
+    <div class="metric-card">
+        <div class="label">性能趋势</div>
+        <div class="value {% if evo.performance.trend == 'improving' %}green{% elif evo.performance.trend == 'declining' %}red{% else %}yellow{% endif %}">
+            {% if evo.performance.trend == "improving" %}📈 改善
+            {% elif evo.performance.trend == "declining" %}📉 恶化
+            {% else %}→ 稳定{% endif %}
+        </div>
+    </div>
+    <div class="metric-card">
+        <div class="label">平均成功率</div>
+        <div class="value cyan">{{ "{:.1f}%".format(evo.performance.avg_success_rate * 100) if evo.performance.avg_success_rate else "-" }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="label">平均延迟</div>
+        <div class="value yellow">{{ "{:.0f}".format(evo.performance.avg_latency * 1000) if evo.performance.avg_latency else "-" }}ms</div>
+    </div>
+    <div class="metric-card">
+        <div class="label">采样窗口</div>
+        <div class="value accent">{{ evo.performance.samples if evo.performance.samples else 0 }}</div>
+    </div>
+</div>
+
+<!-- 性能趋势条 -->
+<div class="section">
+    <div class="section-title">性能指标</div>
+    <div class="status-line"><span class="key">趋势方向</span><span class="val">{{ evo.performance.trend }}</span></div>
+    <div class="status-line"><span class="key">平均成功率</span><span class="val">{{ "{:.1f}%".format(evo.performance.avg_success_rate * 100) }}</span></div>
+    <div class="bar"><div class="bar-fill {% if evo.performance.avg_success_rate >= 0.95 %}green{% elif evo.performance.avg_success_rate >= 0.8 %}yellow{% else %}red{% endif %}" style="width:{{ (evo.performance.avg_success_rate * 100)|int }}%"></div></div>
+    <div class="status-line" style="margin-top:12px;"><span class="key">平均延迟</span><span class="val">{{ "{:.0f}".format(evo.performance.avg_latency * 1000) }}ms</span></div>
+</div>
+
+<!-- 模式库 -->
+<div class="section">
+    <div class="section-title">模式库 (Pattern Database)</div>
+    {% if evo.patterns %}
+    <table class="data-table">
+        <thead><tr><th>模式</th><th>出现次数</th><th>活跃度</th></tr></thead>
+        <tbody>
+        {% for pattern, count in evo.patterns %}
+        <tr>
+            <td style="font-family:monospace;font-size:12px;">{{ pattern }}</td>
+            <td>{{ count }}</td>
+            <td>
+                {% set max_count = evo.patterns[0][1] if evo.patterns else 1 %}
+                <div class="bar" style="width:100px;display:inline-block;vertical-align:middle;">
+                    <div class="bar-fill accent" style="width:{{ (count / max_count * 100)|int }}%"></div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">尚未捕获到重复模式</div>
+    {% endif %}
+</div>
+
+<!-- 进化报告 -->
+{% if evo.reports %}
+<div class="section">
+    <div class="section-title">进化分析报告</div>
+    {% for report in evo.reports[-5:]|reverse %}
+    <div class="card" style="margin-bottom:12px;padding:16px;background:var(--bg-card);border-radius:8px;">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">
+            Tick #{{ report.tick }} · {{ report.time }}
+        </div>
+        {% if report.analysis %}
+        <div style="margin-bottom:8px;line-height:1.6;">{{ report.analysis }}</div>
+        {% endif %}
+        {% if report.patterns %}
+        <div style="margin-bottom:4px;"><span class="tag info">模式</span>
+            {% for p in report.patterns %}<span class="tag default">{{ p }}</span> {% endfor %}
+        </div>
+        {% endif %}
+        {% if report.recommendations %}
+        <div style="margin-top:8px;">
+            <span class="tag warning">建议</span>
+            <ul style="margin:4px 0 0 16px;">
+            {% for rec in report.recommendations %}
+                <li style="font-size:13px;margin-bottom:4px;">{{ rec }}</li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- 策略调整历史 -->
+<div class="section">
+    <div class="section-title">策略调整历史 (最近 20 条)</div>
+    {% if evo.adjustments %}
+    <table class="data-table">
+        <thead><tr><th>ID</th><th>领域</th><th>理由</th><th>结果</th></tr></thead>
+        <tbody>
+        {% for a in evo.adjustments %}
+        <tr>
+            <td style="font-size:12px;color:var(--text-muted);">{{ a.id }}</td>
+            <td><span class="tag info">{{ a.area }}</span></td>
+            <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.reason }}</td>
+            <td>
+                {% if a.outcome == "success" %}<span class="tag success">✓ 成功</span>
+                {% elif a.outcome == "failure" %}<span class="tag danger">✗ 失败</span>
+                {% elif a.outcome == "rolled_back" %}<span class="tag warning">↩ 回滚</span>
+                {% else %}<span class="tag default">{{ a.outcome }}</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">尚无策略调整记录</div>
+    {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}

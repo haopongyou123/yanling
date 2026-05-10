@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- 集群摘要指标 -->
+{% set online = nodes|selectattr("status", "eq", "online")|list|length %}
+{% set offline = nodes|selectattr("status", "eq", "offline")|list|length %}
+
+<div class="metric-grid">
+    <div class="metric-card">
+        <div class="label">集群节点</div>
+        <div class="value accent">{{ nodes|length }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="label">在线</div>
+        <div class="value green">{{ online }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="label">离线</div>
+        <div class="value {% if offline > 0 %}red{% else %}green{% endif %}">{{ offline }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="label">本机角色</div>
+        <div class="value yellow" style="font-size:16px;">{{ info.node_role if info.node_role else "嵌入式" }}</div>
+    </div>
+</div>
+
+<!-- 部署指引 / 空状态 -->
+{% if not nodes %}
+<div class="section">
+    <div class="section-title">衍灵集群</div>
+    <div class="empty">
+        <div style="font-size:36px;color:var(--text-muted);margin-bottom:12px;">⚡</div>
+        <div>尚未发现任何衍灵节点</div>
+        <div style="font-size:12px;margin-top:8px;color:var(--text-secondary);">
+            在目标机器上设置环境变量启动即可自动加入集群：
+        </div>
+        <div style="margin-top:12px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+            <code class="deploy-hint">YANLING_NODE_ROLE=lighthouse ./run.sh</code>
+            <code class="deploy-hint">YANLING_NODE_ROLE=butler ./run.sh</code>
+            <code class="deploy-hint">YANLING_NODE_ROLE=accountant ./run.sh</code>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-muted);">
+            黑板地址: 10.147.19.81:4321
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 节点列表 -->
+{% if nodes %}
+<div class="section">
+    <div class="section-title">
+        节点列表
+        <span style="font-weight:400;color:var(--text-muted);font-size:12px;margin-left:8px;">
+            每 10 秒自动刷新
+        </span>
+    </div>
+
+    <!-- 节点卡片网格 -->
+    <div class="node-grid" hx-get="/api/nodes" hx-trigger="every 10s" hx-swap="outerHTML">
+        {% for n in nodes %}
+        <div class="node-card">
+            <div class="node-header">
+                <span class="node-role tag {{ n.role }}">{{ n.role }}</span>
+                <span class="node-status-dot {% if n.status == 'online' %}online{% elif n.status == 'offline' %}offline{% else %}unknown{% endif %}"></span>
+                <span class="node-status-text">{{ "在线" if n.status == "online" else "离线" if n.status == "offline" else "未知" }}</span>
+            </div>
+            <div class="node-title">{{ n.display_name or n.role }}</div>
+            <div class="node-detail"><span class="key">节点ID</span><span class="val">{{ n.node_id or "-" }}</span></div>
+            {% if n.capabilities %}
+            <div class="node-detail">
+                <span class="key">能力</span>
+                <span class="val" style="font-size:11px;display:flex;flex-wrap:wrap;gap:4px;">
+                    {% for c in n.capabilities %}
+                    <span class="tag info">{{ c }}</span>
+                    {% endfor %}
+                </span>
+            </div>
+            {% endif %}
+            <div class="node-detail"><span class="key">运行时长</span><span class="val">{{ n.uptime_str if n.uptime_str else "-" }}</span></div>
+            <div class="node-detail"><span class="key">最后心跳</span><span class="val">{{ n.last_heartbeat_str if n.last_heartbeat_str else "-" }}</span></div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

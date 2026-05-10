@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="section">
+    <div class="section-title">工作记忆 (Working Memory)</div>
+    {% if info.memory and info.memory.working %}
+    <table class="data-table">
+        <thead><tr><th>键</th><th>内容 (摘要)</th></tr></thead>
+        <tbody>
+        {% for key, val in info.memory.working.items() %}
+        <tr>
+            <td style="color:var(--accent)">{{ key }}</td>
+            <td style="font-size:12px;color:var(--text-secondary);max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ val|string|truncate(100) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">工作记忆为空</div>
+    {% endif %}
+</div>
+
+<div class="section">
+    <div class="section-title">短期记忆 (Short-Term Memory) — 最近 10 条</div>
+    {% if info.memory and info.memory.short_term %}
+    <table class="data-table">
+        <thead><tr><th>键</th><th>类型</th><th>重要性</th><th>标签</th><th>内容</th></tr></thead>
+        <tbody>
+        {% for e in info.memory.short_term %}
+        <tr>
+            <td style="color:var(--text-secondary);font-size:12px;">{{ e.key }}</td>
+            <td><span class="tag info">{{ e.type }}</span></td>
+            <td>
+                <span style="color:{% if e.importance >= 0.7 %}var(--yellow){% else %}var(--text-muted){% endif %}">
+                    {{ e.importance }}
+                </span>
+            </td>
+            <td>{% for t in e.tags %}<span class="tag default">{{ t }}</span> {% endfor %}</td>
+            <td style="font-size:12px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ e.content_preview }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">短期记忆为空</div>
+    {% endif %}
+</div>
+
+<div class="section">
+    <div class="section-title">长期记忆 (Long-Term Memory) — 重要条目 (importance ≥ 0.6)</div>
+    {% if info.memory and info.memory.long_term %}
+    <table class="data-table">
+        <thead><tr><th>键</th><th>类型</th><th>重要性</th><th>标签</th><th>内容</th></tr></thead>
+        <tbody>
+        {% for e in info.memory.long_term %}
+        <tr>
+            <td style="color:var(--text-secondary);font-size:12px;">{{ e.key }}</td>
+            <td><span class="tag {% if e.type == 'experience' %}warning{% elif e.type == 'knowledge' %}success{% else %}info{% endif %}">{{ e.type }}</span></td>
+            <td>
+                <span style="font-weight:600;color:{% if e.importance >= 0.8 %}var(--red){% elif e.importance >= 0.7 %}var(--yellow){% else %}var(--text-muted){% endif %}">
+                    {{ e.importance }}
+                </span>
+            </td>
+            <td>{% for t in e.tags %}<span class="tag default">{{ t }}</span> {% endfor %}</td>
+            <td style="font-size:12px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ e.content_preview }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">长期记忆为空</div>
+    {% endif %}
+</div>
+
+{% endblock %}

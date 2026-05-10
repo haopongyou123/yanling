@@ -1,0 +1,25 @@
+# 衍灵·管家 — 本地运维节点
+# 运行在 Windows 桌面：中边界，规则认知，本地运维
+node:
+  role: butler
+  display_name: "衍灵·管家 — 本地运维"
+
+capabilities:
+  - perception.system
+  - action.alert
+  - action.log
+  - action.adjust
+
+boundaries:
+  scope:
+    allowed_types: ["alert", "log", "adjust"]
+  rate_limit:
+    max_per_minute: 15
+    max_per_hour: 120
+  time_window:
+    start_hour: 6
+    end_hour: 23
+
+cognition:
+  mode: rule
+  deep_evolution: false

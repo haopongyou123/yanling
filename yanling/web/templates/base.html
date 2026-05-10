@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>衍灵引擎仪表盘</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="logo">衍灵引擎</div>
+        <div class="status-badge" id="status-badge">
+            {% if info.running %}
+            <span class="status-dot running"></span> 运行中 · Tick #{{ info.tick_count }}
+            {% else %}
+            <span class="status-dot stopped"></span> 已停止
+            {% endif %}
+        </div>
+    </header>
+
+    <nav class="tabs">
+        <span class="tab-group">本机</span>
+        <a href="/" class="tab {% if active_tab == 'overview' %}active{% endif %}">概览</a>
+        <a href="/memory" class="tab {% if active_tab == 'memory' %}active{% endif %}">记忆</a>
+        <a href="/evolution" class="tab {% if active_tab == 'evolution' %}active{% endif %}">进化</a>
+        <span class="tab-sep"></span>
+        <span class="tab-group">衍灵</span>
+        <a href="/nodes" class="tab {% if active_tab == 'nodes' %}active{% endif %}">集群管理</a>
+    </nav>
+
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        // 每 3 秒刷新状态栏
+        setInterval(async () => {
+            try {
+                const r = await fetch('/api/status');
+                const s = await r.json();
+                const badge = document.getElementById('status-badge');
+                if (s.running) {
+                    badge.innerHTML = '<span class="status-dot running"></span> 运行中 · Tick #' + s.tick;
+                } else {
+                    badge.innerHTML = '<span class="status-dot stopped"></span> 已停止';
+                }
+            } catch(e) {}
+        }, 3000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# 衍灵·掌簿 — 凭证保险柜节点
+# 运行在 Mac Mini :4322：极紧边界，仅日志，禁止出站网络
+node:
+  role: accountant
+  display_name: "衍灵·掌簿 — 凭证保险柜"
+
+capabilities:
+  - action.log
+
+boundaries:
+  scope:
+    allowed_types: ["log"]
+  rate_limit:
+    max_per_minute: 5
+    max_per_hour: 30
+  time_window:
+    start_hour: 6
+    end_hour: 23
+
+cognition:
+  mode: rule
+  deep_evolution: false

@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% if info.config_warnings %}
+<div class="warning-box">
+    {% for w in info.config_warnings %}
+    <div>{{ w }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not info.running %}
+<div class="section" style="text-align:center;padding:40px 20px;">
+    <div style="font-size:48px;color:var(--text-muted);margin-bottom:16px;">⚡</div>
+    <div style="font-size:18px;color:var(--text-secondary);margin-bottom:8px;">引擎未运行</div>
+    <div style="font-size:13px;color:var(--text-muted);">
+        启动引擎后才能看到实时数据<br>
+        <code style="background:var(--bg-hover);padding:2px 6px;border-radius:3px;">yanling run embedded --web</code>
+        <span style="margin:0 8px;">或</span>
+        <code style="background:var(--bg-hover);padding:2px 6px;border-radius:3px;">yanling start --web</code>
+    </div>
+</div>
+{% endif %}
+
+<!-- 指标卡 -->
+<div class="metric-grid">
+    <div class="metric-card">
+        <div class="label">总 Tick</div>
+        <div class="value cyan">{{ info.stats.total_ticks if info.stats else 0 }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="label">运行时长</div>
+        <div class="value accent">{{ "{:.1f}".format(info.stats.uptime / 3600) if info.stats and info.stats.status != "idle" else 0 }}h</div>
+    </div>
+    <div class="metric-card">
+        <div class="label">成功率</div>
+        <div class="value {% if info.stats and info.stats.avg_success_rate >= 0.95 %}green{% elif info.stats and info.stats.avg_success_rate >= 0.8 %}yellow{% else %}red{% endif %}">
+            {{ "{:.1f}%".format(info.stats.avg_success_rate * 100) if info.stats and info.stats.status != "idle" else "-" }}
+        </div>
+    </div>
+    <div class="metric-card">
+        <div class="label">平均延迟</div>
+        <div class="value yellow">{{ "{:.0f}".format(info.stats.avg_latency * 1000) if info.stats and info.stats.status != "idle" else "-" }}ms</div>
+    </div>
+</div>
+
+<!-- 引擎状态 -->
+<div class="section">
+    <div class="section-title">引擎状态</div>
+    <div class="status-line"><span class="key">状态</span><span class="val">{{ info.state }}</span></div>
+    <div class="status-line"><span class="key">当前 Tick</span><span class="val">#{{ info.tick_count }}</span></div>
+    <div class="status-line"><span class="key">空闲计数</span><span class="val">{{ info.idle_ticks }}</span></div>
+    <div class="status-line"><span class="key">引擎语言</span><span class="val">{{ info.language if info.language else "zh" }}</span></div>
+    <div class="status-line">
+        <span class="key">LLM 模型</span>
+        <span class="val" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span id="current-model">{{ info.model if info.model else "无" }}</span>
+            <select id="model-select" class="model-select" style="display:none;">
+                <option value="">切换模型...</option>
+            </select>
+            <button class="btn-xs" id="model-switch-btn" onclick="toggleModelSelect()" title="切换模型">切换</button>
+        </span>
+    </div>
+    <div class="status-line">
+        <span class="key">基线模型</span>
+        <span class="val" style="display:flex;align-items:center;gap:8px;">
+            <span id="baseline-status" class="tag {% if info.using_baseline %}warning{% else %}success{% endif %}">
+                {{ "基线运行中" if info.using_baseline else "TinyLlama 待命" }}
+            </span>
+            <button class="btn-xs" id="baseline-btn" onclick="resetBaseline()" title="恢复为内置基线模型">恢复基线</button>
+        </span>
+    </div>
+    {% if info.stats and info.stats.total_errors is defined %}
+    <div class="status-line"><span class="key">总错误数</span><span class="val">{{ info.stats.total_errors }}</span></div>
+    <div class="status-line"><span class="key">Tick 频率</span><span class="val">{{ info.stats.ticks_per_sec if info.stats.ticks_per_sec else 0 }} Hz</span></div>
+    {% endif %}
+</div>
+
+<!-- 最近 Tick 详情 -->
+<div class="section" id="last-tick">
+    <div class="section-title" hx-get="/api/stats" hx-trigger="every 3s" hx-swap="none">最近 Tick</div>
+    {% if info.last_tick %}
+    <div class="status-line"><span class="key">ID</span><span class="val">#{{ info.last_tick.id }}</span></div>
+    <div class="status-line"><span class="key">感知</span><span class="val">{{ info.last_tick.percepts }} 条</span></div>
+    <div class="status-line"><span class="key">决策</span><span class="val">{{ info.last_tick.decisions }} 条</span></div>
+    <div class="status-line"><span class="key">行动</span><span class="val">{{ info.last_tick.actions }} 条</span></div>
+    <div class="status-line"><span class="key">成功率</span><span class="val">{{ "{:.0f}%".format(info.last_tick.success_rate * 100) }}</span></div>
+    <div class="status-line"><span class="key">耗时</span><span class="val">{{ info.last_tick.latency }}s</span></div>
+    {% if info.last_tick.error %}
+    <div class="status-line"><span class="key">错误</span><span class="val" style="color:var(--red)">{{ info.last_tick.error }}</span></div>
+    {% endif %}
+    {% else %}
+    <div class="empty">尚无 tick 数据</div>
+    {% endif %}
+</div>
+
+<!-- 记忆摘要 -->
+{% if info.memory %}
+<div class="section">
+    <div class="section-title">记忆系统</div>
+    <div class="status-line"><span class="key">工作记忆</span><span class="val">{{ info.memory.working|length }} 条</span></div>
+    <div class="status-line"><span class="key">短期记忆</span><span class="val">{{ info.memory.short_term|length }} 条</span></div>
+    <div class="status-line"><span class="key">长期记忆 (重要)</span><span class="val">{{ info.memory.long_term|length }} 条</span></div>
+</div>
+{% endif %}
+
+<!-- 进化摘要 -->
+{% if info.evolution %}
+<div class="section">
+    <div class="section-title">进化系统</div>
+    <div class="status-line"><span class="key">性能趋势</span>
+        <span class="val">
+            {% set trend = info.evolution.performance.trend %}
+            {% if trend == "improving" %}<span style="color:var(--green)">📈 改善中</span>
+            {% elif trend == "declining" %}<span style="color:var(--red)">📉 恶化中</span>
+            {% else %}<span style="color:var(--text-secondary)">→ 稳定</span>{% endif %}
+        </span>
+    </div>
+    <div class="status-line"><span class="key">模式捕获</span><span class="val">{{ info.evolution.patterns|length }} 种</span></div>
+    <div class="status-line"><span class="key">策略调整</span><span class="val">{{ info.evolution.adjustments|length }} 次</span></div>
+    <div class="status-line"><span class="key">进化步数</span><span class="val">{{ info.evolution.steps }} 步</span></div>
+</div>
+{% endif %}
+
+<script>
+// 模型切换
+let modelData = [];
+
+async function resetBaseline() {
+    const btn = document.getElementById('baseline-btn');
+    btn.textContent = '恢复中...';
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/model/baseline', {method: 'POST'});
+        const data = await r.json();
+        if (data.ok) {
+            document.getElementById('current-model').textContent = data.name;
+            document.getElementById('baseline-status').textContent = '基线运行中';
+            document.getElementById('baseline-status').className = 'tag warning';
+            btn.textContent = '基线已激活';
+        } else {
+            alert('恢复基线失败: ' + (data.error || '未知错误'));
+            btn.textContent = '恢复基线';
+        }
+    } catch(e) {
+        alert('请求失败: ' + e.message);
+        btn.textContent = '恢复基线';
+    }
+    btn.disabled = false;
+}
+
+async function loadModels() {
+    try {
+        const r = await fetch('/api/models');
+        const data = await r.json();
+        modelData = data.models || [];
+        const sel = document.getElementById('model-select');
+        if (!sel) return;
+
+        const groups = {};
+        for (const m of modelData) {
+            if (!groups[m.group]) groups[m.group] = [];
+            groups[m.group].push(m);
+        }
+        sel.innerHTML = '<option value="">— 选择模型 —</option>';
+
+        // 推荐不可用的模型时在顶部显示推荐
+        if (data.recommendation && data.current !== data.recommendation.model) {
+            const rec = document.createElement('option');
+            rec.value = data.recommendation.model;
+            rec.textContent = '★ 推荐: ' + data.recommendation.name;
+            rec.style.color = '#58a6ff';
+            rec.style.fontWeight = 'bold';
+            sel.appendChild(rec);
+            const sep = document.createElement('option');
+            sep.disabled = true;
+            sep.textContent = '──────────';
+            sel.appendChild(sep);
+        }
+
+        for (const [g, ms] of Object.entries(groups)) {
+            const optg = document.createElement('optgroup');
+            optg.label = g;
+            let hasAvailable = false;
+            for (const m of ms) {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                if (m.available) {
+                    opt.textContent = '✓ ' + m.name;
+                    hasAvailable = true;
+                } else {
+                    opt.textContent = '✗ ' + m.name + ' (不可用)';
+                    opt.disabled = true;
+                    opt.style.color = '#6e7681';
+                }
+                if (m.id === data.current) opt.selected = true;
+                optg.appendChild(opt);
+            }
+            if (!hasAvailable) {
+                optg.label = '— ' + g + ' (全部不可用) —';
+            }
+            sel.appendChild(optg);
+        }
+    } catch(e) {}
+}
+
+async function switchModel() {
+    const sel = document.getElementById('model-select');
+    const modelId = sel.value;
+    if (!modelId) return;
+
+    const btn = document.getElementById('model-switch-btn');
+    btn.textContent = '切换中...';
+    btn.disabled = true;
+
+    try {
+        const r = await fetch('/api/model', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({model: modelId}),
+        });
+        const data = await r.json();
+        if (data.ok) {
+            document.getElementById('current-model').textContent = data.name;
+            sel.style.display = 'none';
+            btn.textContent = '切换';
+            btn.disabled = false;
+        } else {
+            alert('切换失败: ' + (data.error || '未知错误'));
+            btn.textContent = '切换';
+            btn.disabled = false;
+        }
+    } catch(e) {
+        alert('请求失败: ' + e.message);
+        btn.textContent = '切换';
+        btn.disabled = false;
+    }
+}
+
+function toggleModelSelect() {
+    const sel = document.getElementById('model-select');
+    const btn = document.getElementById('model-switch-btn');
+    if (sel.style.display === 'none' || !sel.style.display) {
+        sel.style.display = 'inline-block';
+        btn.textContent = '确认切换';
+        btn.onclick = switchModel;
+        loadModels();
+    } else {
+        sel.style.display = 'none';
+        btn.textContent = '切换';
+        btn.onclick = toggleModelSelect;
+    }
+}
+
+// 页面加载时加载模型列表（用于切换时快速展示）
+document.addEventListener('DOMContentLoaded', loadModels);
+</script>
+{% endblock %}

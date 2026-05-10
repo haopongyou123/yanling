@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>衍灵内核 — 商业计划书</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;700;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans SC', -apple-system, sans-serif;
+    background: #0a0a0f;
+    color: #e8e8f0;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  .slide {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+    padding: 60px 80px;
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .slide.active { display: flex; }
+
+  .slide-num {
+    position: absolute;
+    top: 24px; right: 40px;
+    font-size: 14px;
+    color: rgba(255,255,255,0.3);
+    font-weight: 300;
+    letter-spacing: 2px;
+  }
+
+  /* ─── Title slide ─── */
+  .title-slide {
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a1030 40%, #0a1a2a 100%);
+    text-align: center;
+  }
+  .title-slide .logo {
+    font-size: 64px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #4A90D9, #50C878, #F5A623);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+  .title-slide .subtitle {
+    font-size: 22px;
+    color: rgba(255,255,255,0.5);
+    font-weight: 300;
+    margin-bottom: 40px;
+  }
+  .title-slide .meta {
+    font-size: 14px;
+    color: rgba(255,255,255,0.3);
+  }
+  .title-slide .tagline {
+    margin-top: 60px;
+    font-size: 16px;
+    color: rgba(255,255,255,0.25);
+    font-style: italic;
+  }
+
+  /* ─── Content slides ─── */
+  .content-slide {
+    background: linear-gradient(180deg, #0f0f1a 0%, #0a0a12 100%);
+  }
+  .slide-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #f0f0ff;
+  }
+  .slide-subtitle {
+    font-size: 14px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 28px;
+    font-weight: 300;
+  }
+  .slide-body {
+    flex: 1;
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    min-height: 0;
+  }
+  .slide-body img {
+    max-height: 60vh;
+    max-width: 55%;
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    object-fit: contain;
+  }
+  .slide-body .notes {
+    flex: 1;
+    font-size: 15px;
+    line-height: 1.8;
+    color: rgba(255,255,255,0.75);
+  }
+  .slide-body .notes h3 {
+    font-size: 18px;
+    color: #4A90D9;
+    margin-bottom: 12px;
+  }
+  .slide-body .notes ul {
+    list-style: none;
+  }
+  .slide-body .notes li {
+    margin-bottom: 8px;
+    padding-left: 20px;
+    position: relative;
+  }
+  .slide-body .notes li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    color: #50C878;
+  }
+  .slide-body .notes .highlight {
+    color: #F5A623;
+    font-weight: 700;
+  }
+
+  /* ─── Full image slide ─── */
+  .img-full .slide-body img {
+    max-width: 90%;
+    max-height: 75vh;
+    margin: 0 auto;
+  }
+
+  /* ─── Controls ─── */
+  .controls {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    z-index: 100;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(12px);
+    padding: 10px 20px;
+    border-radius: 30px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .controls button {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.6);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s;
+  }
+  .controls button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .controls .page-indicator {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    min-width: 60px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .controls .play-btn {
+    color: #50C878;
+  }
+  .controls .play-btn:hover { background: rgba(80,200,120,0.15); }
+
+  /* ─── Progress bar ─── */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #4A90D9, #50C878);
+    transition: width 0.4s ease;
+    z-index: 200;
+  }
+
+  /* ─── Audio toast ─── */
+  .audio-indicator {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(80,200,120,0.15);
+    border: 1px solid rgba(80,200,120,0.3);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    color: #50C878;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 150;
+    pointer-events: none;
+  }
+  .audio-indicator.visible { opacity: 1; }
+
+  @media (max-width: 768px) {
+    .slide { padding: 30px 20px; }
+    .slide-body { flex-direction: column; gap: 20px; }
+    .slide-body img { max-width: 100%; max-height: 40vh; }
+    .title-slide .logo { font-size: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress" style="width:0%"></div>
+
+<!-- ====== SLIDE 1: TITLE ====== -->
+<div class="slide title-slide active" data-slide="0">
+  <div class="slide-num">1 / 11</div>
+  <div class="logo">衍灵</div>
+  <div class="subtitle">通用 AI 自我进化系统内核</div>
+  <div class="meta">商业计划书 · v0.1 · 2026-05-10</div>
+  <div class="tagline">感知 → 认知 → 行动 → 进化</div>
+</div>
+
+<!-- ====== SLIDE 2: 执行摘要 ====== -->
+<div class="slide content-slide" data-slide="1">
+  <div class="slide-num">2 / 11</div>
+  <div class="slide-title">执行摘要</div>
+  <div class="slide-subtitle">让每个系统拥有自我进化的能力</div>
+  <div class="slide-body">
+    <img src="assets/architecture.png" alt="系统架构">
+    <div class="notes">
+      <h3>核心差异化</h3>
+      <ul>
+        <li>现有 AI 方案是被动响应（你问它答）</li>
+        <li>衍灵是 <span class="highlight">7×24 主动持续</span> 的决策系统</li>
+        <li>四阶段循环：感知 → 认知 → 行动 → 进化</li>
+        <li>不替代现有系统，作为底层驱动层嵌入</li>
+        <li>定位：<span class="highlight">嵌入式 AI 决策引擎</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SLIDE 3: 产品能力 ====== -->
+<div class="slide content-slide" data-slide="2">
+  <div class="slide-num">3 / 11</div>
+  <div class="slide-title">核心能力矩阵</div>
+  <div class="slide-subtitle">从技术验证到商业化</div>
+  <div class="slide-body">
+    <div class="notes" style="flex:1.2">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+          <th style="text-align:left;padding:8px 12px;color:#4A90D9;">能力</th>
+          <th style="text-align:left;padding:8px 12px;color:#50C878;">当前</th>
+          <th style="text-align:left;padding:8px 12px;color:#F5A623;">短期 (3月)</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:6px 12px;">感知</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">轮询模式</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">推送 + Webhook</td></tr>
+          <tr><td style="padding:6px 12px;">认知</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">规则+LLM 双模式</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">规则自动生成</td></tr>
+          <tr><td style="padding:6px 12px;">记忆</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">工作/短期/长期</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">记忆衰减优化</td></tr>
+          <tr><td style="padding:6px 12px;">进化</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">模式追踪+LLM</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">策略自动调整</td></tr>
+          <tr><td style="padding:6px 12px;">可观测性</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">Web 面板</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">告警集成</td></tr>
+          <tr><td style="padding:6px 12px;">部署</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">Python 直接运行</td><td style="padding:6px 12px;color:rgba(255,255,255,0.6);">Docker 镜像</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <img src="assets/memory_arch.png" alt="记忆系统架构" style="max-width:45%;">
+  </div>
+</div>
+
+<!-- ====== SLIDE 4: 市场 ====== -->
+<div class="slide content-slide" data-slide="3">
+  <div class="slide-num">4 / 11</div>
+  <div class="slide-title">目标市场</div>
+  <div class="slide-subtitle">三个方向 · 千亿级赛道</div>
+  <div class="slide-body">
+    <img src="assets/market.png" alt="市场规模">
+    <div class="notes">
+      <h3>目标客户</h3>
+      <ul>
+        <li><span class="highlight">IoT/边缘设备</span> — 设备异构、运维复杂，7×24 自主监控</li>
+        <li><span class="highlight">中小企业管理</span> — 流程重复，嵌入自主决策</li>
+        <li><span class="highlight">智能家居集成商</span> — 场景联动僵硬，自适应体验</li>
+      </ul>
+      <p style="margin-top:16px;font-size:13px;color:rgba(255,255,255,0.5);">
+        全球 IoT 管理平台市场 ~¥1260 亿 · AI 中台 ~¥200 亿<br>
+        衍灵切入点：嵌入式 AI 决策引擎
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SLIDE 5: 竞争 ====== -->
+<div class="slide content-slide" data-slide="4">
+  <div class="slide-num">5 / 11</div>
+  <div class="slide-title">竞争定位</div>
+  <div class="slide-subtitle">独特的嵌入式 AI 决策切入点</div>
+  <div class="slide-body img-full">
+    <img src="assets/competitive.png" alt="竞争定位" style="max-height:65vh;">
+  </div>
+</div>
+
+<!-- ====== SLIDE 6: 进化引擎 ====== -->
+<div class="slide content-slide" data-slide="5">
+  <div class="slide-num">6 / 11</div>
+  <div class="slide-title">进化引擎</div>
+  <div class="slide-subtitle">核心差异化能力 — 持续自我改进</div>
+  <div class="slide-body">
+    <img src="assets/evolution_flow.png" alt="进化流程">
+    <div class="notes">
+      <h3>双重进化机制</h3>
+      <ul>
+        <li><span class="highlight">轻量学习</span> — 每次 tick 后：性能追踪 → 失败分析 → 模式提取</li>
+        <li><span class="highlight">深度进化</span> — 定期间隔 / 趋势恶化时：LLM 分析 → 策略调整</li>
+        <li>性能趋势 <span class="highlight">恶化 >10%</span> 自动触发深度进化</li>
+        <li>每次调整记录快照，支持自动回滚</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SLIDE 7: 商业模式 ====== -->
+<div class="slide content-slide" data-slide="6">
+  <div class="slide-num">7 / 11</div>
+  <div class="slide-title">商业模式</div>
+  <div class="slide-subtitle">开源驱动 · 四层定价体系</div>
+  <div class="slide-body" style="justify-content:center;">
+    <img src="assets/biz_model.png" alt="商业模式" style="max-height:72vh;max-width:95%;">
+  </div>
+</div>
+
+<!-- ====== SLIDE 8: 收入预测 ====== -->
+<div class="slide content-slide" data-slide="7">
+  <div class="slide-num">8 / 11</div>
+  <div class="slide-title">收入预测</div>
+  <div class="slide-subtitle">24 个月增长路径</div>
+  <div class="slide-body img-full">
+    <img src="assets/revenue.png" alt="收入预测" style="max-height:60vh;">
+  </div>
+</div>
+
+<!-- ====== SLIDE 9: 路线图 ====== -->
+<div class="slide content-slide" data-slide="8">
+  <div class="slide-num">9 / 11</div>
+  <div class="slide-title">技术路线图</div>
+  <div class="slide-subtitle">三阶段演进 — 内核 → 生态 → 商业化</div>
+  <div class="slide-body img-full">
+    <img src="assets/roadmap.png" alt="路线图" style="max-height:60vh;">
+  </div>
+</div>
+
+<!-- ====== SLIDE 10: 风险 ====== -->
+<div class="slide content-slide" data-slide="9">
+  <div class="slide-num">10 / 11</div>
+  <div class="slide-title">风险与对策</div>
+  <div class="slide-subtitle">提前识别 · 有备无患</div>
+  <div class="slide-body">
+    <div class="notes" style="flex:1;">
+      <h3>五大风险</h3>
+      <ul>
+        <li><span class="highlight">LLM 成本过高</span> → 本地推理 + 云端按需切换</li>
+        <li><span class="highlight">竞品出现</span> → 聚焦嵌入式，做深不做广</li>
+        <li><span class="highlight">商业化不及预期</span> → 小团队 + 开源社区优先</li>
+        <li><span class="highlight">技术复杂度</span> → 聚焦内核，适配器生态靠社区</li>
+        <li><span class="highlight">用户不信任 AI</span> → 边界控制 + 人工兜底 + 渐进式自主</li>
+      </ul>
+    </div>
+    <img src="assets/evolution_flow.png" alt="进化安全" style="max-width:40%;opacity:0.7;">
+  </div>
+</div>
+
+<!-- ====== SLIDE 11: 行动计划 ====== -->
+<div class="slide content-slide" data-slide="10">
+  <div class="slide-num">11 / 11</div>
+  <div class="slide-title">行动计划</div>
+  <div class="slide-subtitle">未来两周 · 关键里程碑</div>
+  <div class="slide-body">
+    <div class="notes" style="flex:1;">
+      <h3>立即行动</h3>
+      <ul>
+        <li>打通衍灵 ↔ 园丁数据通道</li>
+        <li>场景模板 MVP — 嵌入式设备监控</li>
+        <li>发布 <span class="highlight">v0.1 开源版本</span> — GitHub 公开</li>
+        <li>录制 3 分钟演示视频</li>
+      </ul>
+      <h3 style="margin-top:24px;">里程碑</h3>
+      <ul>
+        <li>2026-06: v0.1 发布 · GitHub ⭐50</li>
+        <li>2026-08: 园丁整合完成</li>
+        <li>2026-10: 3 个场景模板就绪</li>
+        <li>2026-12: <span class="highlight">首个付费客户</span></li>
+        <li>2027-06: 衍灵 Hub Beta · 10 活跃节点</li>
+      </ul>
+    </div>
+    <div style="flex:0.8;text-align:center;">
+      <div style="font-size:60px;font-weight:900;background:linear-gradient(135deg,#4A90D9,#50C878);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px;">衍灵</div>
+      <div style="font-size:16px;color:rgba(255,255,255,0.3);">感知 → 认知 → 行动 → 进化</div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== CONTROLS ====== -->
+<div class="controls">
+  <button onclick="prevSlide()" title="上一页 (←)">◀</button>
+  <span class="page-indicator" id="pageNum">1 / 11</span>
+  <button onclick="nextSlide()" title="下一页 (→)">▶</button>
+  <button class="play-btn" id="playBtn" onclick="togglePlay()" title="播放语音">🔊</button>
+</div>
+
+<div class="audio-indicator" id="audioIndicator">正在播放语音...</div>
+
+<script>
+const totalSlides = 11;
+let current = 0;
+let isPlaying = false;
+
+const audioFiles = [
+  "assets/narration_opening.mp3",
+  "assets/narration_summary.mp3",
+  "assets/narration_product.mp3",
+  "assets/narration_market.mp3",
+  "assets/narration_competition.mp3",
+  "assets/narration_evolution.mp3",
+  "assets/narration_bizmodel.mp3",
+  null, // revenue has no specific audio
+  "assets/narration_roadmap.mp3",
+  "assets/narration_risk.mp3",
+  "assets/narration_action.mp3",
+];
+
+let currentAudio = null;
+
+function showSlide(idx) {
+  document.querySelectorAll('.slide').forEach((s, i) => {
+    s.classList.toggle('active', i === idx);
+  });
+  document.getElementById('pageNum').textContent = `${idx+1} / ${totalSlides}`;
+  document.getElementById('progress').style.width = `${((idx+1)/totalSlides)*100}%`;
+  current = idx;
+  stopAudio();
+}
+
+function nextSlide() { showSlide(Math.min(current + 1, totalSlides - 1)); }
+function prevSlide() { showSlide(Math.max(current - 1, 0)); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prevSlide(); }
+  if (e.key === 'p' || e.key === 'P') { togglePlay(); }
+});
+
+// Touch / swipe support
+let touchStartX = 0;
+document.addEventListener('touchstart', (e) => { touchStartX = e.changedTouches[0].screenX; });
+document.addEventListener('touchend', (e) => {
+  const diff = touchStartX - e.changedTouches[0].screenX;
+  if (Math.abs(diff) > 50) { diff > 0 ? nextSlide() : prevSlide(); }
+});
+
+function stopAudio() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  document.getElementById('audioIndicator').classList.remove('visible');
+}
+
+function playCurrentAudio() {
+  stopAudio();
+  const src = audioFiles[current];
+  if (!src) {
+    // 无语音的页面，自动跳转
+    if (isPlaying) setTimeout(nextSlide, 2000);
+    return;
+  }
+  currentAudio = new Audio(src);
+  currentAudio.addEventListener('ended', () => {
+    document.getElementById('audioIndicator').classList.remove('visible');
+    if (isPlaying) setTimeout(nextSlide, 1500);
+  });
+  currentAudio.play();
+  document.getElementById('audioIndicator').classList.add('visible');
+}
+
+function togglePlay() {
+  isPlaying = !isPlaying;
+  document.getElementById('playBtn').textContent = isPlaying ? '🔇' : '🔊';
+  if (isPlaying) {
+    playCurrentAudio();
+  } else {
+    stopAudio();
+  }
+}
+
+// When manually navigating during play, restart audio
+const origNext = nextSlide, origPrev = prevSlide;
+nextSlide = function() { origNext(); if (isPlaying) playCurrentAudio(); };
+prevSlide = function() { origPrev(); if (isPlaying) playCurrentAudio(); };
+// Fix showSlide override for keyboard
+const origShow = showSlide;
+showSlide = function(idx) { origShow(idx); if (isPlaying) playCurrentAudio(); };
+</script>
+</body>
+</html>
