@@ -22,6 +22,7 @@ from yanling.kernel.lifecycle import Lifecycle, State
 from yanling.kernel.memory import MemorySystem
 from yanling.kernel.perception import PerceptionSystem, TimerAdapter
 from yanling.kernel.stats import EngineStats, TickMetrics
+from yanling.kernel.world_model import WorldModel, WorldModelAdapter
 from yanling.plugin.manager import PluginManager
 from yanling.plugin.registry import PluginRegistry
 
@@ -48,6 +49,7 @@ class YanLingEngine:
         clock: Clock | None = None,
         bus: EventBus | None = None,
         node: NodeIdentity | None = None,
+        world_model: WorldModel | None = None,
     ):
         self.config = config or Config()
         self.perception = perception or PerceptionSystem()
@@ -61,6 +63,11 @@ class YanLingEngine:
         self.lifecycle = Lifecycle()
         self.stats = EngineStats()
         self.node = node or NodeIdentity.detect()
+
+        # 世界模型 — 状态追踪 + 因果推理上下文
+        self.world_model = world_model or WorldModel(window_size=200)
+        world_adapter = WorldModelAdapter(self.world_model, check_interval=5)
+        self.perception.register(world_adapter)
 
         # 插件系统
         plugin_config_path = self.config.get("plugins", "config_path", default="")
@@ -213,6 +220,9 @@ class YanLingEngine:
 
                 percepts = await self.perception.collect()
 
+                # 1b. 世界模型观察 — 记录状态、检测异常、更新关联
+                self.world_model.observe(self._tick_count, percepts)
+
                 # 空闲检测
                 if not percepts:
                     self._idle_ticks += 1
@@ -224,10 +234,26 @@ class YanLingEngine:
                     await asyncio.sleep(self.clock.interval * 10)
                     continue
 
-                # 2. 认知
+                # 2. 认知 — 融合世界模型上下文
                 context = {}
                 if self.memory:
                     context = await self.memory.recall_context()
+
+                # 注入世界模型分析结果到认知上下文
+                if self._tick_count % 5 == 0 and len(self.world_model._history) >= 5:
+                    anomaly = self.world_model.detect_anomalies(
+                        self._tick_count, percepts)
+                    pred = self.world_model.predict_next(
+                        self._tick_count, percepts)
+                    context["world_model"] = {
+                        "anomalies": [
+                            {k: v for k, v in a.items() if k != "baseline_mean"}
+                            for a in anomaly.anomalies
+                        ],
+                        "predicted_events": pred.predicted_event_types,
+                        "prediction_confidence": round(pred.probability, 2),
+                        "correlations_active": len(self.world_model.get_correlations(min_count=3)),
+                    }
 
                 cognition_result = None
                 if self.cognition:

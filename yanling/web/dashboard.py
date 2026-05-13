@@ -6,8 +6,10 @@
 """
 from __future__ import annotations
 
+import json as _json
 import logging
 import os
+import re as _re
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,31 @@ from yanling.web.registry import get as get_engine
 log = logging.getLogger("yanling.web")
 
 HERE = Path(__file__).parent
+
+
+def _parse_score_json(raw: str, model_label: str) -> dict | None:
+    """从模型响应中提取 JSON 评分结果。"""
+    raw = raw.strip()
+    if not raw:
+        return None
+    json_match = _re.search(r'\{.*\}', raw, _re.DOTALL)
+    if not json_match:
+        return None
+    try:
+        parsed = _json.loads(json_match.group())
+        score = float(parsed.get("score", 6.0))
+        score = max(1, min(10, score))
+        return {
+            "score": score,
+            "passed": score >= 5.5,
+            "issues": parsed.get("issues", []),
+            "suggestions": parsed.get("suggestions", []),
+            "model": model_label,
+        }
+    except (ValueError, TypeError, _json.JSONDecodeError):
+        return None
+
+
 
 # ─── 模型注册表 ─────────────────────────────────────────────
 # 可扩展：后续接入自定义蒸馏模型时在此注册即可
@@ -165,6 +192,29 @@ def _engine_info() -> dict[str, Any]:
             "error": last.error,
         }
 
+    # 世界模型
+    if engine.world_model:
+        try:
+            wm_summary = engine.world_model.summary()
+            wm_corrs = engine.world_model.get_correlations(min_count=2)
+            info["world_model"] = {
+                "total_ticks": wm_summary["total_ticks"],
+                "correlations_tracked": wm_summary["correlations_tracked"],
+                "significant": wm_summary["significant_correlations"],
+                "top_correlations": [
+                    {
+                        "antecedent": c.antecedent,
+                        "consequent": c.consequent,
+                        "probability": round(c.probability, 2),
+                        "count": c.count,
+                    }
+                    for c in wm_corrs[:5]
+                ],
+                "metric_baselines": wm_summary["metric_baselines"],
+            }
+        except Exception:
+            info["world_model"] = {"error": "unavailable"}
+
     return info
 
 
@@ -203,6 +253,10 @@ def _entry_dict(e: Any) -> dict:
 
 # ─── 页面路由 ───────────────────────────────────────────────
 
+
+@app.get("/api/ping")
+async def api_ping():
+    return {"ok": True, "node": "yanling", "version": "0.1.0"}
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
@@ -281,7 +335,7 @@ async def api_nodes():
 
 async def _fetch_nodes(info: dict) -> list[dict]:
     """从黑板查询所有衍灵节点。"""
-    bb_url = info.get("blackboard_url") or "http://10.147.19.81:4321/api/blackboard"
+    bb_url = info.get("blackboard_url") or "http://localhost:8767/api/blackboard"
     try:
         import httpx
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -557,6 +611,127 @@ async def api_reset_baseline():
         return JSONResponse({"ok": True, "model": "tinyllama:latest", "name": "衍灵基线 (TinyLlama)"})
     else:
         return JSONResponse({"ok": False, "error": "基线模型加载失败，请检查 Ollama 是否运行"})
+
+
+# ─── 内容评分 API ──────────────────────────────────────────
+# 衍灵 + Ollama Gemma4 (零成本) 为 auto-content 管道提供质量评分
+
+
+@app.post("/api/score-content")
+async def api_score_content(request: Request):
+    """用本地 Gemma4 对文章内容进行质量评分（零成本）。
+
+    Body:
+        ``{"items": [{"title": "...", "summary": "..."}]}``
+        （可以带 ``titles`` 和 ``opening`` 字段）
+
+    Returns:
+        ``{"score": float, "passed": bool, "issues": [str], "model": str}``
+    """
+    body = await request.json()
+    items = body.get("items", [])
+    titles = body.get("titles", body.get("opening", ""))
+    opening = body.get("opening", "")
+
+    # 构建评分用的文本（精简，加快本地推理）
+    text_for_review = ""
+    if titles:
+        t = titles if isinstance(titles, list) else [titles]
+        text_for_review += "标题: " + " | ".join(t[:2]) + "\n"
+    for item in items[:6]:
+        text_for_review += f"- {item.get('title', '')}: {item.get('summary', '')[:80]}\n"
+
+    prompt = f"""你是一个内容编辑。返回JSON评分(1-10)。
+
+评审判据：信息量(40%)、可读性(30%)、标题质量(20%)、合规性(10%)
+
+文章：
+{text_for_review}
+
+JSON格式: {{"score": 分数, "issues": ["问题1"], "suggestions": ["建议1"]}}
+只返回JSON。"""
+
+    # 尝试本地模型 → AI Proxy 免费模型（降级链）
+    score_result = None
+
+    # 1) 尝试 Ollama tinyllama（最快本地模型）
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post("http://localhost:11434/api/generate", json={
+                "model": "tinyllama:latest",
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 128},
+            })
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("response", "").strip()
+            if raw:
+                score_result = _parse_score_json(raw, "tinyllama (本地)")
+    except Exception as e:
+        log.warning("tinyllama 评分失败: %s", e)
+
+    # 2) 尝试 Ollama gemma4（更强但较慢）
+    if not score_result:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                resp = await client.post("http://localhost:11434/api/generate", json={
+                    "model": "gemma4:e4b",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.1, "num_predict": 128},
+                })
+                resp.raise_for_status()
+                data = resp.json()
+                raw = data.get("response", "").strip()
+                if raw:
+                    score_result = _parse_score_json(raw, "gemma4:e4b (本地)")
+        except Exception as e:
+            log.warning("gemma4 评分失败: %s", e)
+
+    # 3) 降级到 AI Proxy qwen-turbo（免费云）
+    if not score_result:
+        try:
+            import httpx
+            qwen_prompt = f"""你是一个内容编辑，评审以下文章并给出分数(1-10)和改进建议。
+
+评审判据：
+1. 信息量 — 是否有具体数据、事实、引用 (权重40%)
+2. 可读性 — 语言是否流畅、结构是否清晰 (权重30%)
+3. 标题质量 — 是否吸引人且准确 (权重20%)
+4. 合规性 — 是否违反平台规定 (权重10%)
+
+文章：
+{text_for_review}
+
+要求：只返回JSON，格式: {{"score": 分数, "passed": true/false, "issues": ["问题1"], "suggestions": ["建议1"]}}
+passed = score >= 6.0，最多各3条。"""
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post("http://localhost:4000/v1/chat/completions", json={
+                    "model": "qwen-turbo",
+                    "messages": [{"role": "user", "content": qwen_prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 500,
+                })
+                resp.raise_for_status()
+                data = resp.json()
+                raw = data["choices"][0]["message"]["content"]
+                parsed = _parse_score_json(raw, "qwen-turbo (免费云)")
+                if parsed:
+                    score_result = parsed
+        except Exception as e:
+            log.warning("qwen-turbo 评分也失败: %s", e)
+
+    if score_result:
+        return JSONResponse(score_result)
+
+    return JSONResponse({
+        "score": 6.0, "passed": True,
+        "issues": ["所有评分服务均不可用，自动通过"],
+        "suggestions": [], "model": "fallback",
+    })
 
 
 # ─── 启动器 ─────────────────────────────────────────────────

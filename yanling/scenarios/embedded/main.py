@@ -113,7 +113,7 @@ class PatchedEngine(YanLingEngine):
         super().__init__(*args, **kwargs)
 
     async def _main_loop(self):
-        """覆写主循环，支持规则引擎。"""
+        """覆写主循环，支持规则引擎 + 世界模型。"""
         tick_count = 0
         import time as t_mod
 
@@ -127,6 +127,9 @@ class PatchedEngine(YanLingEngine):
                 await self.bus.publish(Event("tick.start", {"tick": tick_count}))
                 percepts = await self.perception.collect()
 
+                # 世界模型观察
+                self.world_model.observe(tick_count, percepts)
+
                 if not percepts:
                     self._idle_ticks += 1
                 else:
@@ -137,10 +140,24 @@ class PatchedEngine(YanLingEngine):
                     await asyncio.sleep(self.clock.interval * 10)
                     continue
 
-                # 认知 — 支持规则引擎和 LLM 引擎
+                # 认知 — 融合世界模型上下文
                 context = {}
                 if self.memory:
                     context = await self.memory.recall_context()
+
+                # 注入世界模型分析
+                if tick_count % 5 == 0 and len(self.world_model._history) >= 5:
+                    anomaly = self.world_model.detect_anomalies(tick_count, percepts)
+                    pred = self.world_model.predict_next(tick_count, percepts)
+                    context["world_model"] = {
+                        "anomalies": [
+                            {k: v for k, v in a.items() if k != "baseline_mean"}
+                            for a in anomaly.anomalies
+                        ],
+                        "predicted_events": pred.predicted_event_types,
+                        "prediction_confidence": round(pred.probability, 2),
+                        "correlations_active": len(self.world_model.get_correlations(min_count=3)),
+                    }
 
                 cognition_result = None
                 if self.cognition_rule:
