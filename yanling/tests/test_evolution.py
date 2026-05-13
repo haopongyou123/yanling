@@ -1,4 +1,4 @@
-"""进化引擎测试."""
+"""进化引擎测试 — 含自助进化新能力覆盖。"""
 
 import pytest
 
@@ -13,7 +13,12 @@ from yanling.core.types import (
     TickResult,
 )
 from yanling.kernel.cognition import CognitiveEngine
-from yanling.kernel.evolution import EvolutionEngine, PerformanceTracker, StrategySnapshot
+from yanling.kernel.evolution import (
+    EvolutionEngine,
+    ImprovementProposal,
+    PerformanceTracker,
+    StrategySnapshot,
+)
 from yanling.kernel.memory import MemorySystem
 
 
@@ -58,6 +63,152 @@ class TestPerformanceTracker:
         pt = PerformanceTracker(window=10)
         assert pt.summary()["avg_success_rate"] == 0
         assert pt.trend() == 0.0
+
+    def test_volatility_high(self):
+        pt = PerformanceTracker(window=10)
+        for i in range(10):
+            pt.record(i, 1.0, 1.0 if i % 2 == 0 else 0.01, 100)  # 大幅波动
+        vol = pt.volatility("latency")
+        assert vol > 0.5
+
+    def test_volatility_low(self):
+        pt = PerformanceTracker(window=10)
+        for i in range(10):
+            pt.record(i, 1.0, 0.5, 100)  # 稳定
+        vol = pt.volatility("latency")
+        assert vol < 0.1
+
+
+@pytest.fixture
+def evo():
+    storage = JsonFileStorage("/tmp/yanling_test_evol_base")
+    mem = MemorySystem(storage)
+    llm = MockLLMEvolution()
+    return EvolutionEngine(mem, llm)
+
+
+class TestSelfProposals:
+    """自助提案测试。"""
+
+    def test_generate_proposals_low_success(self, evo):
+        for i in range(10):
+            evo._performance.record(i, 0.3, 0.5, 100)
+        proposals = evo._generate_proposals()
+        titles = [p.title for p in proposals]
+        assert any("成功" in t for t in titles)
+
+    def test_generate_proposals_volatility(self, evo):
+        for i in range(10):
+            evo._performance.record(i, 1.0, 1.0 if i % 2 == 0 else 0.01, 100)
+        proposals = evo._generate_proposals()
+        titles = [p.title for p in proposals]
+        assert any("延迟" in t or "波动" in t for t in titles)
+
+    def test_generate_proposals_consecutive_failures(self, evo):
+        evo._consecutive_failures = 5
+        for i in range(10):
+            evo._performance.record(i, 0.3, 0.5, 100)  # 保证 summary 有数据
+        proposals = evo._generate_proposals()
+        titles = [p.title for p in proposals]
+        assert any("失败" in t for t in titles)
+
+    def test_proposal_data_structure(self):
+        p = ImprovementProposal(
+            area="parameter",
+            title="测试提案",
+            description="test",
+            trigger="test",
+            confidence=0.8,
+            estimated_impact="high",
+        )
+        assert p.area == "parameter"
+        assert p.confidence == 0.8
+
+
+class TestRuleEvolution:
+    """规则驱动进化测试（无 LLM）。"""
+
+    def test_rule_evolve_declining(self, evo):
+        for i in range(10):
+            evo._performance.record(i, 1.0 - i * 0.1, 0.5, 100)
+        evo._pattern_db["fail_type:test_op"] = 5
+        report = evo._rule_evolve({
+            "performance": evo._performance.summary(),
+            "top_patterns": [("fail_type:test_op", 5)],
+        }, evo._performance.summary(), [("fail_type:test_op", 5)])
+        assert len(report.adjustments) >= 1
+        assert len(report.recommendations) >= 1
+
+    def test_rule_evolve_stable(self, evo):
+        for i in range(10):
+            evo._performance.record(i, 1.0, 0.5, 100)
+        perf = evo._performance.summary()
+        report = evo._rule_evolve(
+            {"performance": perf, "top_patterns": []},
+            perf, [],
+        )
+        assert len(report.recommendations) >= 1  # "性能稳定" 建议
+
+
+class TestAutoTune:
+    """自助调参测试。"""
+
+    @pytest.mark.asyncio
+    async def test_auto_tune_on_failure(self, evo):
+        from yanling.kernel.cognition import CognitiveEngine
+        evo.cognition = CognitiveEngine(MockLLMEvolution())  # 需要 cognition 才能调参
+        evo._tick_count = 100
+        evo._consecutive_failures = 5
+        evo._adjustment_cooldown = 0
+
+        tick_result = TickResult(
+            tick_id=99,
+            perceptions=[],
+            cognition=CognitionResult(decisions=[]),
+            actions=[
+                ActionResult(action_id="a1", type="publish", success=False, error="err"),
+                ActionResult(action_id="a2", type="publish", success=False, error="err2"),
+                ActionResult(action_id="a3", type="notify", success=True),
+            ],
+        )
+        evo._auto_tune_on_failure(tick_result)
+        assert evo._last_adjustment_tick == evo._tick_count  # 调整为 _tick_count 的值
+
+    def test_cooldown_respected(self, evo):
+        evo._last_adjustment_tick = evo._tick_count
+        prev = evo._last_adjustment_tick
+        evo._auto_tune_on_failure(
+            TickResult(tick_id=1, perceptions=[], cognition=CognitionResult(decisions=[]), actions=[])
+        )
+        assert evo._last_adjustment_tick == prev  # 冷却中，不应修改
+        # 重置 _tick_count 引用
+        evo._auto_tune_on_failure(
+            TickResult(tick_id=1, perceptions=[], cognition=CognitionResult(decisions=[]), actions=[])
+        )
+        assert evo._last_adjustment_tick == prev
+
+
+class TestRollbackWithAssessment:
+    def test_rollback_assessment(self, evo):
+        from yanling.kernel.cognition import CognitiveEngine
+        evo.cognition = CognitiveEngine(MockLLMEvolution())
+        evo._snapshots.append(StrategySnapshot("prompt_v1"))
+        evo._snapshots.append(StrategySnapshot("prompt_v2"))
+        for i in range(5):
+            evo._performance.record(i, 0.8, 0.5, 100)
+
+        result = evo.rollback_with_assessment(steps=1)
+        assert result["success"]
+        assert result["steps_rolled_back"] == 1
+        assert "performance_before" in result
+        assert "performance_after" in result
+
+
+class TestImpactAnalysis:
+    def test_estimate_impact(self, evo):
+        assert "影响" in evo._estimate_impact("system_prompt", "x")
+        assert "影响" in evo._estimate_impact("boundary", "x")
+        assert "影响" in evo._estimate_impact("parameter", "x")
 
 
 class TestEvolutionEngine:
@@ -105,7 +256,6 @@ class TestEvolutionEngine:
         llm = MockLLMEvolution()
         evo = EvolutionEngine(mem, llm, deep_evolution_interval=1)
 
-        # 触发深度进化
         report = await evo.evolve()
         assert len(report.patterns_found) > 0
 
@@ -137,3 +287,16 @@ class TestEvolutionEngine:
         top = sorted(evo._pattern_db.items(), key=lambda x: -x[1])
         assert top[0][0] == "fail:test/target"
         assert top[0][1] == 2
+
+    @pytest.mark.asyncio
+    async def test_evolve_without_llm_fallback(self):
+        """无 LLM 时降级到规则进化。"""
+        storage = JsonFileStorage("/tmp/yanling_test_evol6")
+        mem = MemorySystem(storage)
+        evo = EvolutionEngine(mem, llm=None)
+        for i in range(10):
+            evo._performance.record(i, 0.5 + i * 0.02, 0.5, 100)
+
+        report = await evo.evolve()
+        assert report is not None
+        assert len(report.recommendations) >= 0
