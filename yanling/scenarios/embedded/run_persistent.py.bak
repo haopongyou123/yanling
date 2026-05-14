@@ -132,22 +132,6 @@ def auto_configure(report: dict, node: NodeIdentity | None = None):
     from yanling.scenarios.embedded.communicator_sensor import CommunicatorSensor
     perception.register(CommunicatorSensor())
     log.info("自动注册传感器: CommunicatorSensor (mailbox + 黑板)")
-    from yanling.scenarios.embedded.communicator_sensor import SituationalAwarenessSensor
-    perception.register(SituationalAwarenessSensor())
-    log.info("自动注册传感器: SituationalAwarenessSensor (系统态势融合)")
-
-    # -- 家用网络设备感知（多子网）--
-    from yanling.adapters.sensors.home_network import HomeNetworkSensor
-    home_subnets: list[str] = []
-    env_sn = os.environ.get("HOME_SUBNETS", "")
-    if env_sn:
-        home_subnets = [s.strip() for s in env_sn.split(",") if s.strip()]
-    elif os.environ.get("HOME_SUBNET"):
-        home_subnets = [os.environ["HOME_SUBNET"]]
-    # 默认同时扫描主 LAN 和 192.168.1.x 子网
-    perception.register(HomeNetworkSensor(subnets=home_subnets or None))
-    log.info("自动注册传感器: HomeNetworkSensor (子网=%s)",
-             home_subnets or "自动探测(192.168.0.0/24 + 192.168.1.0/24)")
 
     # ── 行动系统 ──
     action_sys = ActionSystem()
@@ -185,22 +169,14 @@ def auto_configure(report: dict, node: NodeIdentity | None = None):
     use_llm = force_mode == "llm" or (force_mode != "rule" and report["llm"]["available"])
 
     if use_llm:
+        from yanling.adapters.llm.deepseek import DeepSeekAdapter
         from yanling.kernel.cognition import CognitiveEngine
 
+        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+        base_url = report["llm"].get("base_url", "https://api.deepseek.com/anthropic/v1/messages")
         model = report["llm"].get("model", "deepseek-v4-flash")
 
-        # 自动选择适配器：本地模型(Ollama) vs 云端(DeepSeek)
-        local_models = {"tinyllama", "tinyllama:latest", "gemma4", "gemma4:e4b", "qwen-turbo"}
-        force_adapter = os.environ.get("YANLING_LLM_ADAPTER", "")
-        if force_adapter == "ollama" or (force_adapter != "deepseek" and model in local_models):
-            from yanling.adapters.llm.ollama import OllamaAdapter
-            adapter = OllamaAdapter(model=model)
-            log.info("认知引擎: Ollama 本地推理 (model=%s)", model)
-        else:
-            from yanling.adapters.llm.deepseek import DeepSeekAdapter
-            api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-            base_url = report["llm"].get("base_url", "https://api.deepseek.com/anthropic/v1/messages")
-            adapter = DeepSeekAdapter(base_url=base_url, model=model, api_key=api_key)
+        adapter = DeepSeekAdapter(base_url=base_url, model=model, api_key=api_key)
         cognition = CognitiveEngine(llm=adapter, language=language)
 
         # 自动生成适配器描述供 LLM 参考
@@ -268,12 +244,12 @@ def auto_configure(report: dict, node: NodeIdentity | None = None):
                 return lambda ps: any(p.source == "system.process" and p.data.get("zombie", 0) > lo for p in ps)
 
             for r in [
-                Rule("cpu_warning", cpu_hi(85), priority=80, actions=[Action("alert", "alert_logger", {"level": "warning", "message": "CPU > 85%"})]),
-                Rule("cpu_critical", cpu_hi(95), priority=95, actions=[Action("alert", "alert_logger", {"level": "critical", "message": "CPU 过载!"})]),
-                Rule("mem_warning", mem_hi(85), priority=85, actions=[Action("alert", "alert_logger", {"level": "warning", "message": "内存 > 85%"})]),
-                Rule("mem_critical", mem_hi(93), priority=95, actions=[Action("alert", "alert_logger", {"level": "critical", "message": "内存即将耗尽!"}), Action("adjust", "system_log", {"command": "cleanup"})]),
-                Rule("disk_space", dsk_hi(88), priority=80, actions=[Action("alert", "alert_logger", {"level": "warning", "message": "磁盘 > 88%"})]),
-                Rule("zombie_procs", zombie_gt(0), priority=70, actions=[Action("alert", "alert_logger", {"level": "info", "message": "僵尸进程"})]),
+                Rule("cpu_warning", cpu_hi(85), 80, [Action("alert", "alert_logger", {"level": "warning", "message": "CPU > 85%"})]),
+                Rule("cpu_critical", cpu_hi(95), 95, [Action("alert", "alert_logger", {"level": "critical", "message": "CPU 过载!"})]),
+                Rule("mem_warning", mem_hi(85), 85, [Action("alert", "alert_logger", {"level": "warning", "message": "内存 > 85%"})]),
+                Rule("mem_critical", mem_hi(93), 95, [Action("alert", "alert_logger", {"level": "critical", "message": "内存即将耗尽!"}), Action("adjust", "system_log", {"command": "cleanup"})]),
+                Rule("disk_space", dsk_hi(88), 80, [Action("alert", "alert_logger", {"level": "warning", "message": "磁盘 > 88%"})]),
+                Rule("zombie_procs", zombie_gt(0), 70, [Action("alert", "alert_logger", {"level": "info", "message": "僵尸进程"})]),
             ]:
                 cognition.add_rule(r)
         llm = None
@@ -299,14 +275,14 @@ def _start_web():
     import uvicorn
 
     from yanling.web.dashboard import app
-    log.info("Web 面板启动于 http://127.0.0.1:18764")
-    uvicorn.run(app, host="127.0.0.1", port=18764, log_level="warning")
+    log.info("Web 面板启动于 http://0.0.0.0:8764")
+    uvicorn.run(app, host="0.0.0.0", port=8764, log_level="warning")
 
 
 async def main():
     print("=" * 58)
     print("  衍灵内核 — 自动环境适配")
-    print("  Web 面板: http://localhost:18764")
+    print("  Web 面板: http://localhost:8764")
     print("=" * 58)
 
     # 0. 节点身份

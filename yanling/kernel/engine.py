@@ -31,6 +31,19 @@ try:
 except ImportError:
     BlackboardRegistry = None  # registry 模块可选
 
+try:
+    from yanling.adapters.content.monitor import ContentMonitor, ContentSummaryAdapter
+    from yanling.adapters.content.feedback import FeedbackCollector
+    from yanling.adapters.content.optimizer import ContentStrategyOptimizer
+    from yanling.adapters.content.scraper import PlatformStatsScraper
+    HAS_CONTENT_ADAPTERS = True
+except ImportError:
+    HAS_CONTENT_ADAPTERS = False
+    ContentMonitor = None
+    FeedbackCollector = None
+    ContentStrategyOptimizer = None
+    PlatformStatsScraper = None
+
 log = logging.getLogger("yanling.engine")
 
 
@@ -69,6 +82,13 @@ class YanLingEngine:
         world_adapter = WorldModelAdapter(self.world_model, check_interval=5)
         self.perception.register(world_adapter)
 
+        # 内容管道适配器
+        self._content_monitor: ContentMonitor | None = None
+        self._content_feedback: FeedbackCollector | None = None
+        self._content_optimizer: ContentStrategyOptimizer | None = None
+        if HAS_CONTENT_ADAPTERS:
+            self._init_content_adapters()
+
         # 插件系统
         plugin_config_path = self.config.get("plugins", "config_path", default="")
         self.plugin_registry = PluginRegistry(config_path=plugin_config_path)
@@ -93,6 +113,37 @@ class YanLingEngine:
 
         # 注册默认的定时器感知
         self.perception.register(TimerAdapter(interval=self.clock.interval))
+
+    def _init_content_adapters(self):
+        """初始化内容管道适配器。"""
+        try:
+            self._content_monitor = ContentMonitor()
+            self.perception.register(self._content_monitor)
+            # 内容主题汇总适配器（每 10 tick 产主题趋势）
+            summary_adapter = ContentSummaryAdapter(
+                self._content_monitor, interval_ticks=10
+            )
+            self.perception.register(summary_adapter)
+
+            self._content_feedback = FeedbackCollector()
+            self.perception.register(self._content_feedback)
+
+            # 平台统计采集器（每 30 tick 拉取掘金等平台的阅读/点赞数据）
+            self._content_scraper = PlatformStatsScraper(
+                feedback=self._content_feedback,
+                batch_size=5,
+                scrape_interval_ticks=30,
+            )
+            self.perception.register(self._content_scraper)
+
+            self._content_optimizer = ContentStrategyOptimizer(
+                feedback_collector=self._content_feedback,
+                evolution=self.evolution,
+                cooldown_ticks=50,
+            )
+            log.info("内容管道适配器已加载 (含平台采集器)")
+        except Exception as e:
+            log.warning("内容适配器加载失败（跳过）: %s", e)
 
     def set_llm_model(self, model: str, base_url: str | None = None, api_key: str | None = None):
         """运行时切换 LLM 模型。"""
@@ -285,6 +336,13 @@ class YanLingEngine:
                     # 记录到记忆
                     if self.memory:
                         await self.memory.remember_tick(tick_result)
+
+                # 4b. 内容策略优化（每 50 tick 生成提案）
+                if self._content_optimizer and self._tick_count % 50 == 0:
+                    try:
+                        self._content_optimizer.sync(self.world_model, self._tick_count)
+                    except Exception as e:
+                        log.warning("内容优化同步异常: %s", e)
 
                 elapsed = time.time() - start_ts
 

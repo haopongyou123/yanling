@@ -677,6 +677,14 @@ Rules:
     def proposals(self) -> list[ImprovementProposal]:
         return list(self._proposals)
 
+    def add_proposal(self, proposal: ImprovementProposal):
+        """注入一个外部提案到进化引擎。"""
+        self._proposals.append(proposal)
+
+    def add_proposals(self, proposals: list[ImprovementProposal]):
+        """批量注入外部提案。"""
+        self._proposals.extend(proposals)
+
     @property
     def pattern_db(self) -> dict[str, int]:
         return dict(self._pattern_db)

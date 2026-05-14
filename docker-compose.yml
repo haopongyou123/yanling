@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  yanling:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: yanling:latest
+    container_name: yanling
+    restart: unless-stopped
+    ports:
+      - "8764:8764"
+    volumes:
+      - yanling-data:/root/.yanling
+    environment:
+      - YANLING_TICK_INTERVAL=5
+      - YANLING_LANGUAGE=zh
+      - YANLING_MODE=auto
+      # LLM 配置（按需设置）
+      # - DEEPSEEK_API_KEY=
+      # - ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic/v1/messages
+      # - ANTHROPIC_MODEL=deepseek-v4-flash
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  yanling-data:

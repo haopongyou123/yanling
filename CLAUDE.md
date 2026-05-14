@@ -56,7 +56,7 @@ EMBEDDED_MODE=llm PYTHONPATH=. .venv/bin/python -m yanling.scenarios.embedded.ma
 
 | 变量 | 说明 |
 |------|------|
-| `ANTHROPIC_BASE_URL` | DeepSeek/Anthropic 兼容 API 端点 |
+| `ANTHROPIC_BASE_URL` | LLM API 端点（兼容格式） |
 | `ANTHROPIC_MODEL` | 模型名 |
 | `ANTHROPIC_API_KEY` | API 密钥 |
 | `YANLING_TICK_INTERVAL` | 主循环间隔(秒) |

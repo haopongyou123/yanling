@@ -1,7 +1,7 @@
 # 衍灵 (YanLing) — 自主 AI 内核
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![License: Custom](https://img.shields.io/badge/License-Custom-blue)](LICENSE)
 [![CI](https://github.com/haopongyou123/yanling/actions/workflows/ci.yml/badge.svg)](https://github.com/haopongyou123/yanling/actions/workflows/ci.yml)
 
 **衍灵是一个通用 AI 自我进化系统内核。** 它以固定频率循环运行"感知→认知→行动→进化"四阶段流程，可嵌入到任何系统中，使其具备自主决策和自我优化的能力。
@@ -122,7 +122,7 @@ yanling/
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `ANTHROPIC_BASE_URL` | LLM API 端点 | `https://api.deepseek.com/anthropic` |
+| `ANTHROPIC_BASE_URL` | LLM API 端点（兼容格式） | `https://api.deepseek.com/anthropic` |
 | `ANTHROPIC_MODEL` | 模型名 | — |
 | `ANTHROPIC_API_KEY` | API 密钥 | — |
 | `YANLING_TICK_INTERVAL` | 主循环间隔(秒) | `30` |
