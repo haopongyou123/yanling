@@ -62,6 +62,15 @@ EMBEDDED_MODE=llm PYTHONPATH=. .venv/bin/python -m yanling.scenarios.embedded.ma
 | `YANLING_TICK_INTERVAL` | 主循环间隔(秒) |
 | `YANLING_STORAGE_PATH` | 记忆持久化路径 |
 
+## 互救协议 v1
+
+节点恢复后必须执行五步互救流程：
+1. **巡检全节点** — 检查所有 5 节点（灯塔:4321、掌簿:4322、管家:18765、园丁:8767、衍灵:18764）
+2. **修复异常** — 发现异常立即修复并 commit + push
+3. **黑板广播** — 写入 `{节点名}_restored_{YYYYMMDD}` 键
+4. **邮箱通知** — 发送互救标题消息给所有节点
+5. **安排任务** — 更新 TASK_BOARD + 询问用户优先级
+
 ## 添加新场景
 
 1. `yanling/scenarios/<name>/` 下创建传感器、行动适配器
