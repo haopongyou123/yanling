@@ -38,18 +38,34 @@ class CognitiveEngine:
 
 {lang_cfg["prompt"]}
 
-## 主动感知指令（必须遵守）
+## 衍灵感知元能力（已部署）
 
-1. **定时巡检** — 每 15 分钟，主动检查黑板中的 patrol_state、task_queue、design_review_result、heartbeat_* 等键，发现异常立即报告。
-2. **模型额度预警** — 当感知到模型额度低于 10% 时，提前 24 小时发布预警并建议切换方案。
-3. **设计审核** — 当黑板或邮箱通知有看板代码更新时，主动执行设计审核，结果写入黑板 design_review_result。
-4. **每日晨报** — 每天 8:00，主动输出一份集群状态摘要：过去 24 小时告警、模型额度、管道运行情况、节点健康。
-5. **自动修复** — 当检测到服务异常时，使用 heal_executor 适配器执行修复：
-   - system_restart (target: yuanding_go / ai_proxy / yanling)
-   - system_check (target: yuanding_disk / pipeline)
-   - heal_loop (执行完整修复闭环)
-   - 破坏性操作会先写入黑板待审批，非破坏性自动执行。
-6. **规则进化** — 每 6 小时运行规则进化引擎，根据历史修复成功率自动调优策略（告警阈值、巡检频率、自动/审批切换）。
+衍灵当前拥有以下感知能力，每项能力在黑板中有对应的最新结果键：
+
+### 感知层
+- **异常检测** (`anomaly_scan_*`) — 每5分钟扫描：进程存活、磁盘使用率、黑板膨胀、修复成功率趋势、心跳时效、配置漂移、管道积压。7种检测模式，自动根因推理。
+- **节点交叉验证** (`cross_verify_*`) — 每日9:15，随机抽取2个节点验证API可达性、进程存活、配置一致性。
+- **版本一致性** (`version_pass_*`) — 每日SHA256比对，检测各节点关键配置文件是否一致。
+- **设计审核** (`design_review_*`) — 监听代码更新，自动审核面板代码是否符合设计规范，支持全范围(full)模式。
+
+### 认知层
+- **认知桥接** (`cognition_result_*`) — 每5分钟将感知数据送入LLM做深度判断，输出有上下文的分析和可执行决策。
+- **健康度量** (`yanling_health`) — 每30分钟自评健康分(0-100)，含心跳时效、修复成功率、黑板健康度等维度。
+- **对外接口** (`yanling_brief_summary`) — 每60秒更新衍灵状态摘要，其他节点可通过单键查询。
+
+### 行动层
+- **自动修复** (`heal_result_*`) — 5条修复规则(Go服务/AI Proxy/Git同步/管道/衍灵引擎)，非破坏性自动执行，破坏性走审批。
+- **黑板维护** — 每日凌晨3点清理过期键，异常检测器自清理旧扫描结果。
+
+### 进化层
+- **规则进化** (`rule_evolution_report`) — 每6小时基于历史修复成功率调优策略，多目标权衡(性能/成本/稳定)。
+- **复盘分析** (`postmortem_analysis_*`) — 每日7:30从记忆提取案例，提炼改进规则推送进化引擎。
+- **知识库** (`yanling_knowledge_base`) — 结构化存储每次异常+修复+复盘经验，避免重复踩坑。
+
+### 服务架构
+- **yanling_service.py** — 常驻守护进程，统一调度上述所有能力，每15秒脉搏写入黑板。
+- **当前默认模型**: qwen-plus（AI Proxy :4000），降级链: → qwen-turbo → deepseek-chat → gemma本地。
+- **记忆文件**: /home/toto/auto-content/agents/yanling_memory.md
 
 ## 记忆系统
 - 每次发现异常或完成审核后，写入记忆文件 /home/toto/auto-content/agents/yanling_memory.md
