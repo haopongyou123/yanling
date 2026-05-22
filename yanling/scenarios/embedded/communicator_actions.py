@@ -14,7 +14,7 @@ from yanling.kernel.action import ActionAdapter
 
 log = logging.getLogger("yanling.comm_action")
 
-DENGTA_HOST = "10.147.19.81"
+DENGTA_HOST = "192.168.0.113"  # LAN 地址（WSL2 ZT OFFLINE）
 DENGTA_PORT = 4321
 MAILBOX_URL = f"http://{DENGTA_HOST}:{DENGTA_PORT}/api/mailbox"
 BLACKBOARD_URL = f"http://{DENGTA_HOST}:{DENGTA_PORT}/api/blackboard"

@@ -68,23 +68,23 @@ def detect_environment() -> dict:
         report["sensors"]["network"] = False
 
     # LLM 检测 — 仅在明确要求或密钥存在时检测
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_key = os.environ.get("AI_API_KEY", "")
     llm_force = os.environ.get("YANLING_MODE", "").strip().lower() == "llm"
 
     if api_key:
         # 不真正发起 HTTP 请求（避免延迟），只标记可用
         report["llm"]["available"] = True
         report["llm"]["reason"] = f"API Key 存在 ({api_key[:8]}...)"
-        report["llm"]["model"] = os.environ.get("YANLING_LLM_MODEL", "deepseek-v4-flash")
+        report["llm"]["model"] = os.environ.get("YANLING_LLM_MODEL", "qwen-turbo")
         report["llm"]["base_url"] = os.environ.get(
-            "YANLING_LLM_BASE_URL", "https://api.deepseek.com/anthropic/v1/messages",
+            "YANLING_LLM_BASE_URL", "http://localhost:4000/v1/messages",
         )
     elif llm_force:
         report["llm"]["available"] = False
-        report["llm"]["reason"] = "YANLING_MODE=llm 但 DEEPSEEK_API_KEY 未设置"
+        report["llm"]["reason"] = "YANLING_MODE=llm 但 AI_API_KEY 未设置"
     else:
         report["llm"]["available"] = False
-        report["llm"]["reason"] = "DEEPSEEK_API_KEY 未设置，使用规则模式"
+        report["llm"]["reason"] = "AI_API_KEY 未设置，使用规则模式"
 
     return report
 
@@ -187,7 +187,7 @@ def auto_configure(report: dict, node: NodeIdentity | None = None):
     if use_llm:
         from yanling.kernel.cognition import CognitiveEngine
 
-        model = report["llm"].get("model", "deepseek-v4-flash")
+        model = report["llm"].get("model", "qwen-turbo")
 
         # 自动选择适配器：本地模型(Ollama) vs 云端(DeepSeek)
         local_models = {"tinyllama", "tinyllama:latest", "gemma4", "gemma4:e4b", "qwen-turbo"}
@@ -198,8 +198,8 @@ def auto_configure(report: dict, node: NodeIdentity | None = None):
             log.info("认知引擎: Ollama 本地推理 (model=%s)", model)
         else:
             from yanling.adapters.llm.deepseek import DeepSeekAdapter
-            api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-            base_url = report["llm"].get("base_url", "https://api.deepseek.com/anthropic/v1/messages")
+            api_key = os.environ.get("AI_API_KEY", "")
+            base_url = report["llm"].get("base_url", "http://localhost:4000/v1/messages")
             adapter = DeepSeekAdapter(base_url=base_url, model=model, api_key=api_key)
         cognition = CognitiveEngine(llm=adapter, language=language)
 

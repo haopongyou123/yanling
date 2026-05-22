@@ -18,10 +18,15 @@ from yanling.kernel.perception import PerceptionAdapter
 log = logging.getLogger("yanling.communicator")
 
 # ── 中央 API 地址（灯塔 :4321） ──
-DENGTA_HOST = "10.147.19.81"
+DENGTA_HOST = "192.168.0.113"  # LAN 地址（WSL2 ZT OFFLINE）
 DENGTA_PORT = 4321
 MAILBOX_URL = f"http://{DENGTA_HOST}:{DENGTA_PORT}/api/mailbox"
 BLACKBOARD_URL = f"http://{DENGTA_HOST}:{DENGTA_PORT}/api/blackboard"
+
+# ── 本地 API 地址（园丁 :8767） ──
+LOCAL_API = "http://localhost:8767"
+LOCAL_BLACKBOARD_URL = f"{LOCAL_API}/api/blackboard"
+LOCAL_MAILBOX_URL = f"{LOCAL_API}/api/mailbox"
 
 NODE_NAME = "yanling"
 
@@ -32,6 +37,13 @@ SITUATION_KEY = "yanling_situational_latest"
 SYSTEM_KEY_PREFIXES = [
     "zhangbu_l4_", "zhangbu_l5_", "alert_", "heartbeat_",
     "perception_", "watchdog_", "notice_", "recovered_",
+]
+
+# ── 衍灵主动感知关注的黑板键 ──
+INTERESTING_KEYS = [
+    "patrol_state", "task_queue", "design_review_result",
+    "yuanding_to_dengta", "dengta_to_yuanding",
+    "heartbeat_", "notice_", "alert_",
 ]
 
 
@@ -120,11 +132,31 @@ class CommunicatorSensor(PerceptionAdapter):
         except Exception as e:
             log.warning("黑板轮询失败: %s", e)
 
+        # ── 轮询本地黑板（园丁 :8767） ──
+        try:
+            req = urllib.request.Request(LOCAL_BLACKBOARD_URL, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                local_bb = json.loads(resp.read())
+            if isinstance(local_bb, dict):
+                for k, v in local_bb.items():
+                    if k in self._bb_seen:
+                        continue
+                    self._bb_seen.add(k)
+                    if any(kw in k.lower() for kw in INTERESTING_KEYS):
+                        percepts.append(Percept(
+                            source="local_blackboard",
+                            type="local_bb_update",
+                            data={"key": k, "value": str(v)[:500]},
+                        ))
+        except Exception as e:
+            log.debug("本地黑板轮询失败: %s", e)
+
         if percepts:
-            log.info("通信感知: %d 条新消息 (mailbox=%d, bb=%d)",
+            log.info("通信感知: %d 条新消息 (mailbox=%d, bb=%d, local_bb=%d)",
                      len(percepts),
                      sum(1 for p in percepts if p.source == "mailbox"),
-                     sum(1 for p in percepts if p.source == "blackboard"))
+                     sum(1 for p in percepts if p.source == "blackboard"),
+                     sum(1 for p in percepts if p.source == "local_blackboard"))
 
         return percepts
 

@@ -26,7 +26,7 @@ from yanling.kernel.memory import MemorySystem
 from yanling.kernel.perception import PerceptionSystem
 from yanling.kernel.rule_cognition import RuleCognitiveEngine, make_alert_rules, make_heartbeat_rule
 from yanling.scenarios.base import Scenario
-from yanling.scenarios.embedded.actions import AlertLogger, DeviceControl, SystemLog
+from yanling.scenarios.embedded.actions import AlertLogger, DeviceControl, SystemLog, HealExecutor
 from yanling.scenarios.embedded.sensor import SimulatedSensorAdapter
 
 log = setup_logger("yanling.scenario.embedded", level="INFO")
@@ -48,11 +48,12 @@ class EmbeddedMonitorScenario(Scenario):
         self.alert_logger = AlertLogger()
         self.system_log = SystemLog()
         self.device_control = DeviceControl()
+        self.heal_executor = HealExecutor()
 
         # 自定义配置
         self.config._data["kernel"]["tick_interval"] = 2.0
         self.config._data["kernel"]["max_idle_ticks"] = 1000
-        self.config._data["boundaries"]["allowed_action_types"] = ["alert", "log", "adjust"]
+        self.config._data["boundaries"]["allowed_action_types"] = ["alert", "log", "adjust", "system_restart", "system_check", "git_sync", "heal_loop"]
 
     def build_engine(self) -> YanLingEngine:
         perception = PerceptionSystem()
@@ -62,11 +63,12 @@ class EmbeddedMonitorScenario(Scenario):
         action_sys.register(self.alert_logger)
         action_sys.register(self.system_log)
         action_sys.register(self.device_control)
+        action_sys.register(HealExecutor())
 
         storage = JsonFileStorage(os.path.expanduser("~/.yanling/memory/embedded"))
         memory = MemorySystem(storage)
         boundary = BoundaryControl(rules=[
-            ScopeRule(allowed_types=["alert", "log", "adjust"]),
+            ScopeRule(allowed_types=["alert", "log", "adjust", "system_restart", "system_check", "git_sync", "heal_loop"]),
         ])
 
         if self.mode == EmbeddedMonitorMode.RULE:

@@ -149,9 +149,9 @@ class YanLingEngine:
         """运行时切换 LLM 模型。"""
         from yanling.adapters.llm.deepseek import DeepSeekAdapter
 
-        api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
+        api_key = api_key or os.environ.get("AI_API_KEY", "1234")
         base_url = base_url or os.environ.get("YANLING_LLM_BASE_URL",
-                                               "https://api.deepseek.com/anthropic/v1/messages")
+                                               "http://localhost:4000/v1/messages")
 
         # 关闭旧适配器连接
         if self.cognition and hasattr(self.cognition, "llm") and self.cognition.llm:

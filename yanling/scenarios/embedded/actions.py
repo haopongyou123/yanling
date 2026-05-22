@@ -1,8 +1,11 @@
-"""嵌入式场景的行动适配器 — 告警、日志、控制。"""
+"""嵌入式场景的行动适配器 — 告警、日志、控制、修复。"""
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import subprocess
 import time
 from collections import deque
 from datetime import datetime
@@ -11,6 +14,10 @@ from yanling.core.types import Action, ActionResult
 from yanling.kernel.action import ActionAdapter
 
 log = logging.getLogger("yanling.scenario.embedded.action")
+
+# ── 行动脚本路径 ──
+ACTIONS_SCRIPT = "/home/toto/auto-content/scripts/yanling_actions.py"
+HEAL_SCRIPT = "/home/toto/auto-content/scripts/yanling_heal_loop.py"
 
 
 class AlertLogger(ActionAdapter):
@@ -45,6 +52,116 @@ class AlertLogger(ActionAdapter):
 
     async def validate(self, action: Action) -> bool:
         return True
+
+    def recent(self, n: int = 10) -> list[dict]:
+        return list(self._history)[-n:]
+
+
+class HealExecutor(ActionAdapter):
+    """修复执行适配器 — 调用 yanling_actions.py 执行修复操作。
+
+    支持的动作类型:
+      - "system_restart": 重启服务
+      - "system_check": 检查状态
+      - "git_sync": 同步代码
+      - "heal_loop": 执行完整修复闭环
+    """
+
+    def __init__(self):
+        self._history: deque[dict] = deque(maxlen=50)
+
+    @property
+    def name(self) -> str:
+        return "heal_executor"
+
+    async def execute(self, action: Action) -> ActionResult:
+        action_type = action.type
+        params = action.params
+        target = params.get("target", "")
+
+        log.info("[修复] 执行 %s: target=%s", action_type, target)
+
+        if action_type == "system_restart":
+            # 重启服务: 映射到 yanling_actions
+            action_map = {
+                "yuanding_go": "restart_yuanding_go",
+                "ai_proxy": "restart_ai_proxy",
+                "yanling": "restart_yanling_kernel",
+                "dengta_ai_proxy": "restart_dengta_ai_proxy",
+                "dengta_zhangbu": "restart_dengta_zhangbu",
+            }
+            aid = action_map.get(target)
+            if not aid:
+                return ActionResult(action_id=action.id, success=False,
+                                    output={"error": f"未知目标: {target}"})
+            r = await self._run_action(aid)
+            return ActionResult(action_id=action.id, success=r["success"], output=r)
+
+        elif action_type == "system_check":
+            check_map = {
+                "yuanding_disk": "check_yuanding_disk",
+                "dengta_disk": "check_dengta_disk",
+                "pipeline": "check_pipeline_status",
+            }
+            aid = check_map.get(target)
+            if not aid:
+                return ActionResult(action_id=action.id, success=False,
+                                    output={"error": f"未知检查: {target}"})
+            r = await self._run_action(aid)
+            return ActionResult(action_id=action.id, success=r["success"], output=r)
+
+        elif action_type == "git_sync":
+            # git pull 走审批流程
+            r = await self._run_action("sync_git_pull")
+            return ActionResult(action_id=action.id, success=r["success"], output=r)
+
+        elif action_type == "heal_loop":
+            # 执行完整修复闭环
+            r = await self._run_heal_loop()
+            return ActionResult(action_id=action.id, success=r, output={})
+
+        elif action_type == "approve_action":
+            # 批准待审批操作 (人类操作，衍灵仅记录)
+            return ActionResult(action_id=action.id, success=True,
+                                output={"note": "操作需人类在黑板上审批"})
+
+        return ActionResult(action_id=action.id, success=False,
+                            output={"error": f"未知动作类型: {action_type}"})
+
+    async def _run_action(self, action_id: str) -> dict:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "python3", ACTIONS_SCRIPT, "execute", action_id,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            output = stdout.decode().strip()[:500]
+            error = stderr.decode().strip()[:200]
+            success = proc.returncode == 0
+            result = {"success": success, "output": output, "error": error}
+            self._history.append({"action_id": action_id, **result})
+            return result
+        except asyncio.TimeoutError:
+            return {"success": False, "output": "", "error": "超时"}
+        except Exception as e:
+            return {"success": False, "output": "", "error": str(e)}
+
+    async def _run_heal_loop(self) -> bool:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "python3", HEAL_SCRIPT,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=60)
+            return proc.returncode == 0
+        except:
+            return False
+
+    async def validate(self, action: Action) -> bool:
+        return action.type in ("system_restart", "system_check", "git_sync",
+                               "heal_loop", "approve_action")
 
     def recent(self, n: int = 10) -> list[dict]:
         return list(self._history)[-n:]

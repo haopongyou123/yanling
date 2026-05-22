@@ -50,13 +50,13 @@ def _parse_score_json(raw: str, model_label: str) -> dict | None:
 MODEL_REGISTRY = [
     # DeepSeek 云端系列
     {"id": "deepseek-v4-flash", "name": "DeepSeek V4 Flash", "group": "DeepSeek 云端",
-     "base_url": "https://api.deepseek.com/anthropic/v1/messages", "provider": "deepseek"},
+     "base_url": "http://localhost:4000/v1/messages", "provider": "deepseek"},
     {"id": "deepseek-v4-pro", "name": "DeepSeek V4 Pro", "group": "DeepSeek 云端",
-     "base_url": "https://api.deepseek.com/anthropic/v1/messages", "provider": "deepseek"},
+     "base_url": "http://localhost:4000/v1/messages", "provider": "deepseek"},
     {"id": "deepseek-chat", "name": "DeepSeek Chat", "group": "DeepSeek 云端",
-     "base_url": "https://api.deepseek.com/anthropic/v1/messages", "provider": "deepseek"},
+     "base_url": "http://localhost:4000/v1/messages", "provider": "deepseek"},
     {"id": "deepseek-reasoner", "name": "DeepSeek Reasoner", "group": "DeepSeek 云端",
-     "base_url": "https://api.deepseek.com/anthropic/v1/messages", "provider": "deepseek"},
+     "base_url": "http://localhost:4000/v1/messages", "provider": "deepseek"},
     # 本地模型
     {"id": "gemma-4-e4b-it-4bit", "name": "Gemma 4 27B (4bit)", "group": "本地 oMLX",
      "base_url": "http://localhost:8000/v1/chat/completions", "provider": "omlx"},
@@ -237,7 +237,7 @@ def _get_current_model_base_url(engine) -> str:
     except Exception:
         pass
     return os.environ.get("YANLING_LLM_BASE_URL",
-                         "https://api.deepseek.com/anthropic/v1/messages")
+                         "http://localhost:4000/v1/messages")
 
 
 def _entry_dict(e: Any) -> dict:
@@ -357,6 +357,9 @@ async def _fetch_nodes(info: dict) -> list[dict]:
         except (j.JSONDecodeError, TypeError):
             continue
 
+        if not isinstance(parsed, dict):
+            continue  # 跳过非 dict 值（如数组、字符串等）
+
         if k.endswith("_heartbeat"):
             heartbeats[k] = parsed
         else:
@@ -475,12 +478,12 @@ async def _check_model_available(model: dict) -> bool:
 
     if provider == "deepseek":
         # 检查 API Key 和 DeepSeek API 可达性
-        api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+        api_key = os.environ.get("AI_API_KEY", "")
         if not api_key:
             _availability_cache[provider] = (False, now)
             return False
         try:
-            base = model.get("base_url", "https://api.deepseek.com/anthropic/v1/messages")
+            base = model.get("base_url", "http://localhost:4000/v1/messages")
             async with httpx.AsyncClient(timeout=5.0) as c:
                 # 只检查 API 可达性，不真正调用
                 r = await c.get(base.replace("/v1/messages", "/v1/models"), timeout=3.0)
