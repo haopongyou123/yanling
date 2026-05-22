@@ -190,11 +190,11 @@ def auto_configure(report: dict, node: NodeIdentity | None = None):
         model = report["llm"].get("model", "qwen-turbo")
 
         # 自动选择适配器：本地模型(Ollama) vs 云端(DeepSeek)
-        local_models = {"tinyllama", "tinyllama:latest", "gemma4", "gemma4:e4b"}
+        local_models = {"tinyllama", "tinyllama:latest", "gemma4", "gemma4:e4b", "qwen3:4b"}
         force_adapter = os.environ.get("YANLING_LLM_ADAPTER", "")
         if force_adapter == "ollama" or (force_adapter != "deepseek" and model in local_models):
             from yanling.adapters.llm.ollama import OllamaAdapter
-            adapter = OllamaAdapter(model=model)
+            adapter = OllamaAdapter(model=model, base_url="http://192.168.0.113:11434")
             log.info("认知引擎: Ollama 本地推理 (model=%s)", model)
         else:
             from yanling.adapters.llm.deepseek import DeepSeekAdapter
